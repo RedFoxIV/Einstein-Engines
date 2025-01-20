@@ -22,6 +22,19 @@
     checkCanInteract: false
 
 - type: entity
+  id: ActionParry
+  name: Parry
+  description: I'm not gonna sugarcoat it.
+  categories: [ HideSpawnMenu ]
+  components:
+  - type: InstantAction
+    useDelay: 3
+    icon: Interface/Actions/actions_mecha.rsi/mech_defense_mode_on.png
+    event: !type:ParryActionEvent
+    checkCanInteract: true
+
+
+- type: entity
   id: ActionTurnUndead
   name: Turn Undead
   description: Succumb to your infection and become a zombie.

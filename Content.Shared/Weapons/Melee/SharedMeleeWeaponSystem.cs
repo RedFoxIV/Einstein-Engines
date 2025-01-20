@@ -16,8 +16,10 @@ using Content.Shared.Interaction;
 using Content.Shared.Inventory;
 using Content.Shared.Inventory.VirtualItem;
 using Content.Shared.Item.ItemToggle.Components;
+using Content.Shared.Parrying;
 using Content.Shared.Physics;
 using Content.Shared.Popups;
+using Content.Shared.Stunnable;
 using Content.Shared.Weapons.Melee.Components;
 using Content.Shared.Weapons.Melee.Events;
 using Content.Shared.Weapons.Ranged.Components;
@@ -50,6 +52,8 @@ public abstract class SharedMeleeWeaponSystem : EntitySystem
     [Dependency] private   readonly IPrototypeManager       _protoManager    = default!;
     [Dependency] private   readonly StaminaSystem           _stamina         = default!;
     [Dependency] private   readonly ContestsSystem          _contests        = default!;
+    [Dependency] private   readonly SharedStunSystem        _stun            = default!;
+    [Dependency] private   readonly ParrySystem             _parry           = default!;
 
     private const int AttackMask = (int) (CollisionGroup.MobMask | CollisionGroup.Opaque);
 
@@ -486,6 +490,19 @@ public abstract class SharedMeleeWeaponSystem : EntitySystem
 
         // Sawmill.Debug($"Melee damage is {damage.Total} out of {component.Damage.Total}");
 
+        if (_parry.IsParrying(target.Value))
+        {
+            var missEvent = new MeleeHitEvent(new List<EntityUid>(), user, meleeUid, damage, null);
+            RaiseLocalEvent(meleeUid, missEvent);
+            _meleeSound.PlaySwingSound(user, meleeUid, component);
+            var parryComp = Comp<ParryComponent>(target.Value);
+            _parry.Rekt(user, parryComp);
+            AdminLogger.Add(LogType.MeleeHit,
+                LogImpact.Medium,
+                $"{ToPrettyString(user):actor} melee attacked (light) {ToPrettyString(target.Value):subject} using {(meleeUid == user ? "their hands" : $"{ToPrettyString(meleeUid)}:tool")} and got parried ({parryComp.StunDuration} second stun, {parryComp.SlowdownDuration} second slowdown afterwards)");
+            return;
+        }
+
         // Raise event before doing damage so we can cancel damage if the event is handled
         var hitEvent = new MeleeHitEvent(new List<EntityUid> { target.Value }, user, meleeUid, damage, null);
         RaiseLocalEvent(meleeUid, hitEvent);
@@ -568,6 +585,7 @@ public abstract class SharedMeleeWeaponSystem : EntitySystem
 
             _stamina.TakeStaminaDamage(user, component.HeavyStaminaCost, stamina, visual: false);
         }
+
 
         var userPos = TransformSystem.GetWorldPosition(userXform);
         var direction = targetMap.Position - userPos;
@@ -660,7 +678,7 @@ public abstract class SharedMeleeWeaponSystem : EntitySystem
         }
 
         var appliedDamage = new DamageSpecifier();
-
+        bool parried = false;
         for (var i = targets.Count - 1; i >= 0; i--)
         {
             var entity = targets[i];
@@ -670,6 +688,17 @@ public abstract class SharedMeleeWeaponSystem : EntitySystem
             // In that case, just continue.
             if (!Blocker.CanAttack(user, entity, (weapon, component)))
             {
+                targets.RemoveAt(i);
+                continue;
+            }
+
+            if (TryComp<ParryComponent>(entity, out var parryComp))
+            {
+                parried = true;
+                _parry.Rekt(user, parryComp);
+                AdminLogger.Add(LogType.MeleeHit,
+                    LogImpact.Medium,
+                    $"{ToPrettyString(user):actor} melee attacked (heavy) {ToPrettyString(entity):subject} using {(meleeUid == user ? "their hands" : $"{ToPrettyString(meleeUid)}:tool")} and got parried ({parryComp.StunDuration} second stun)");
                 targets.RemoveAt(i);
                 continue;
             }
@@ -705,9 +734,14 @@ public abstract class SharedMeleeWeaponSystem : EntitySystem
             }
         }
 
-        if (entities.Count != 0)
+        if(parried)
         {
-            var target = entities.First();
+            _meleeSound.PlaySwingSound(user, meleeUid, component);
+        }
+
+        if (targets.Count != 0)
+        {
+            var target = targets.First();
             _meleeSound.PlayHitSound(target, user, GetHighestDamageSound(appliedDamage, _protoManager), hitEvent.HitSoundOverride, component.SoundHit, component.SoundNoDamage);
         }
 
