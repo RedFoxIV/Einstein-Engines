@@ -27,10 +27,22 @@ public sealed class ColorFlashEffectSystem : SharedColorFlashEffectSystem
         SubscribeLocalEvent<ColorFlashEffectComponent, AnimationCompletedEvent>(OnEffectAnimationCompleted);
     }
 
-    public override void RaiseEffect(Color color, List<EntityUid> entities, Filter filter)
+    public override void RaiseEffect(Color color, float holdTime, float fadeTime, List<EntityUid> entities, Filter? filter = null)
     {
-        if (!_timing.IsFirstTimePredicted)
+        if (!_timing.IsFirstTimePredicted || entities.Count == 0)
             return;
+
+        filter ??= Filter.Pvs(Transform(entities[0]).Coordinates, entityMan: EntityManager);
+
+        OnColorFlashEffect(new ColorFlashEffectEvent(color, GetNetEntityList(entities), holdTime, fadeTime));
+    }
+
+    public override void RaiseEffect(Color color, List<EntityUid> entities, Filter? filter = null)
+    {
+        if (!_timing.IsFirstTimePredicted || entities.Count == 0)
+            return;
+
+        filter ??= Filter.Pvs(Transform(entities[0]).Coordinates, entityMan: EntityManager);
 
         OnColorFlashEffect(new ColorFlashEffectEvent(color, GetNetEntityList(entities)));
     }
@@ -48,15 +60,18 @@ public sealed class ColorFlashEffectSystem : SharedColorFlashEffectSystem
         RemCompDeferred<ColorFlashEffectComponent>(uid);
     }
 
-    private Animation? GetDamageAnimation(EntityUid uid, Color color, SpriteComponent? sprite = null)
+    private Animation? GetDamageAnimation(EntityUid uid, Color color, SpriteComponent ? sprite = null, float? holdTime = null, float? fadeTime = null)
     {
         if (!Resolve(uid, ref sprite, false))
             return null;
 
+        float hold = holdTime ?? AnimationHoldTimeDefault;
+        float fade = fadeTime ?? AnimationFadeTimeDefault;
+
         // 90% of them are going to be this so why allocate a new class.
         return new Animation
         {
-            Length = TimeSpan.FromSeconds(AnimationLength),
+            Length = TimeSpan.FromSeconds(hold+fade),
             AnimationTracks =
             {
                 new AnimationTrackComponentProperty
@@ -67,7 +82,8 @@ public sealed class ColorFlashEffectSystem : SharedColorFlashEffectSystem
                     KeyFrames =
                     {
                         new AnimationTrackProperty.KeyFrame(color, 0f),
-                        new AnimationTrackProperty.KeyFrame(sprite.Color, AnimationLength)
+                        new AnimationTrackProperty.KeyFrame(color, hold),
+                        new AnimationTrackProperty.KeyFrame(sprite.Color, fade)
                     }
                 }
             }
@@ -112,7 +128,7 @@ public sealed class ColorFlashEffectSystem : SharedColorFlashEffectSystem
                 sprite.Color = effect.Color;
             }
 
-            var animation = GetDamageAnimation(ent, color, sprite);
+            var animation = GetDamageAnimation(ent, color, sprite, ev.HoldTime, ev.FadeTime);
 
             if (animation == null)
                 continue;

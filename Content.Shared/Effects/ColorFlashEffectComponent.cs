@@ -8,4 +8,12 @@ public sealed partial class ColorFlashEffectComponent : Component
 {
     [ViewVariables]
     public Color Color = Color.White;
+
+    [ViewVariables]
+    public float? HoldTime;
+
+    [ViewVariables]
+    public float? FadeTime;
+
+
 }

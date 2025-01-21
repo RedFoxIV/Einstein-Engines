@@ -17,13 +17,13 @@ using System.Threading.Tasks;
 
 namespace Content.Shared.Parrying;
 
-public abstract sealed class SharedParrySystem : EntitySystem
+public abstract class SharedParrySystem : EntitySystem
 {
     [Dependency] protected readonly IGameTiming _timing = default!;
     [Dependency] protected readonly SharedStunSystem _stun = default!;
     [Dependency] protected readonly SharedActionsSystem _action = default!;
     [Dependency] protected readonly SharedAudioSystem _audio = default!;
-    [Dependency] protected readonly IClientNetManager _net = default!;
+
 
     public override void Initialize()
     {
@@ -34,15 +34,9 @@ public abstract sealed class SharedParrySystem : EntitySystem
 
     // todo override on client to add ping to duration
     // todo give up, this shit works awful with high ping (and ping is always high in this mess of a game)
-    private virtual void OnParryAction(EntityUid uid, ParryComponent comp, ParryActionEvent args)
-    {
-        comp.ExpirationTime = _timing.CurTime + TimeSpan.FromSeconds(comp.ParryDuration);
-        _audio.PlayPvs(comp.ActivationSound, uid);
-        if (comp.EffectPrototype.HasValue && !_timing.InPrediction)
-            Spawn(comp.EffectPrototype.Value, new Robust.Shared.Map.EntityCoordinates(uid, 0, 0));
-        Dirty(uid, comp);
-        args.Handled = true;
-    }
+    protected abstract void OnParryAction(EntityUid uid, ParryComponent comp, ParryActionEvent args);
+
+    protected abstract void DoParryEffect(EntityUid uid);
 
     private void OnParryInit(EntityUid uid, ParryComponent comp, ComponentInit args)
     {
@@ -76,6 +70,10 @@ public abstract sealed class SharedParrySystem : EntitySystem
 
     public bool Rekt(EntityUid uid, ParryComponent comp)
     {
+        // maybe don't parry your own attack?
+        // right now only prevents stun and slowdown, the attack is still forced to miss
+        if (uid == comp.Owner)
+            return false;
         _stun.TryStun(uid, TimeSpan.FromSeconds(comp.StunDuration), false);
         _stun.TrySlowdown(uid, TimeSpan.FromSeconds(comp.SlowdownDuration + comp.StunDuration), false);
         return true;

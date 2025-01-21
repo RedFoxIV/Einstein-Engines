@@ -15,9 +15,13 @@ public sealed class ColorFlashEffectEvent : EntityEventArgs
 
     public List<NetEntity> Entities;
 
-    public ColorFlashEffectEvent(Color color, List<NetEntity> entities)
+    public float? HoldTime, FadeTime;
+
+    public ColorFlashEffectEvent(Color color, List<NetEntity> entities, float? holdTime = null, float? fadeTime = null)
     {
         Color = color;
         Entities = entities;
+        HoldTime = holdTime;
+        FadeTime = fadeTime;
     }
 }

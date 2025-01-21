@@ -53,7 +53,7 @@ public abstract class SharedMeleeWeaponSystem : EntitySystem
     [Dependency] private   readonly StaminaSystem           _stamina         = default!;
     [Dependency] private   readonly ContestsSystem          _contests        = default!;
     [Dependency] private   readonly SharedStunSystem        _stun            = default!;
-    [Dependency] private   readonly ParrySystem             _parry           = default!;
+    [Dependency] private   readonly SharedParrySystem       _parry           = default!;
 
     private const int AttackMask = (int) (CollisionGroup.MobMask | CollisionGroup.Opaque);
 
