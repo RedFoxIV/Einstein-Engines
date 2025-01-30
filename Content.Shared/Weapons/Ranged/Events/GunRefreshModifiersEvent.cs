@@ -1,4 +1,4 @@
-﻿using Content.Shared.Weapons.Ranged.Components;
+using Content.Shared.Weapons.Ranged.Components;
 using Content.Shared.Weapons.Ranged.Systems;
 using Robust.Shared.Audio;
 
@@ -17,6 +17,8 @@ public record struct GunRefreshModifiersEvent(
     Angle AngleDecay,
     Angle MaxAngle,
     Angle MinAngle,
+    Angle BonusAngleDecay,
+    Angle MaxBonusAngle,
     int ShotsPerBurst,
     float FireRate,
     float ProjectileSpeed

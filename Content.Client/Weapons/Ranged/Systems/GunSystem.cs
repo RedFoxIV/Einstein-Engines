@@ -5,6 +5,7 @@ using Content.Client.Items;
 using Content.Client.Weapons.Ranged.Components;
 using Content.Shared.Camera;
 using Content.Shared.CombatMode;
+using Content.Shared.Contests;
 using Content.Shared.Mech.Components; // Goobstation
 using Content.Shared.Weapons.Ranged;
 using Content.Shared.Weapons.Ranged.Components;
@@ -36,13 +37,22 @@ public sealed partial class GunSystem : SharedGunSystem
     [Dependency] private readonly IStateManager _state = default!;
     [Dependency] private readonly AnimationPlayerSystem _animPlayer = default!;
     [Dependency] private readonly InputSystem _inputSystem = default!;
+    [Dependency] private readonly ContestsSystem _contest = default!;
     [Dependency] private readonly SharedCameraRecoilSystem _recoil = default!;
     [Dependency] private readonly SharedMapSystem _maps = default!;
 
     [ValidatePrototypeId<EntityPrototype>]
     public const string HitscanProto = "HitscanEffect";
 
-    public bool SpreadOverlay
+    public enum GunSpreadOverlayEnum
+    {
+        Off,
+        Partial,
+        Full
+    }
+
+    private GunSpreadOverlayEnum _spreadOverlay;
+    public GunSpreadOverlayEnum SpreadOverlay
     {
         get => _spreadOverlay;
         set
@@ -51,27 +61,56 @@ public sealed partial class GunSystem : SharedGunSystem
                 return;
 
             _spreadOverlay = value;
-            var overlayManager = IoCManager.Resolve<IOverlayManager>();
 
-            if (_spreadOverlay)
-            {
-                overlayManager.AddOverlay(new GunSpreadOverlay(
-                    EntityManager,
-                    _eyeManager,
-                    Timing,
-                    _inputManager,
-                    _player,
-                    this,
-                    TransformSystem));
-            }
-            else
-            {
-                overlayManager.RemoveOverlay<GunSpreadOverlay>();
-            }
+            UpdateSpreadOverlay();
         }
     }
 
-    private bool _spreadOverlay;
+    private void UpdateSpreadOverlay()
+    {
+        var overlayManager = IoCManager.Resolve<IOverlayManager>();
+        overlayManager.RemoveOverlay<GunSpreadOverlay>();
+        overlayManager.RemoveOverlay<PartialGunSpreadOverlay>();
+
+        switch (_spreadOverlay)
+        {
+            case GunSpreadOverlayEnum.Off:
+                return;
+            case GunSpreadOverlayEnum.Partial:
+                AddPartialSpreadOverlay(overlayManager);
+                return;
+            case GunSpreadOverlayEnum.Full:
+                AddFullSpreadOverlay(overlayManager);
+                return;
+        }
+
+        void AddPartialSpreadOverlay(IOverlayManager overlayManager)
+        {
+            overlayManager.AddOverlay(new PartialGunSpreadOverlay(
+                EntityManager,
+                _eyeManager,
+                Timing,
+                _inputManager,
+                _player,
+                this,
+                TransformSystem,
+                _contest));
+        }
+
+        void AddFullSpreadOverlay(IOverlayManager overlayManager)
+        {
+            overlayManager.AddOverlay(new GunSpreadOverlay(
+                EntityManager,
+                _eyeManager,
+                Timing,
+                _inputManager,
+                _player,
+                this,
+                TransformSystem,
+                _contest));
+        }
+    }
+
 
     public override void Initialize()
     {
@@ -86,6 +125,9 @@ public sealed partial class GunSystem : SharedGunSystem
 
         InitializeMagazineVisuals();
         InitializeSpentAmmo();
+
+        // check cvars for default spread overlay mode
+        SpreadOverlay = GunSpreadOverlayEnum.Partial;
     }
 
     private void OnUpdateClientAmmo(EntityUid uid, AmmoCounterComponent ammoComp, ref UpdateClientAmmoEvent args)
@@ -220,6 +262,7 @@ public sealed partial class GunSystem : SharedGunSystem
             if (throwItems)
             {
                 Recoil(user, direction, gun.CameraRecoilScalarModified);
+                //UpdateAngles(Timing.CurTime, gun, gun.AngleIncreaseModified);
                 if (IsClientSide(ent!.Value))
                     Del(ent.Value);
                 else

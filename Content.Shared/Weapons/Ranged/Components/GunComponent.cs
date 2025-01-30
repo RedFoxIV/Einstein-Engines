@@ -62,7 +62,8 @@ public sealed partial class GunComponent : Component
     /// Used for recoil purposes.
     /// </summary>
     [DataField]
-    public TimeSpan LastFire = TimeSpan.Zero;
+    [AutoNetworkedField]
+    public TimeSpan CurrentAngleLastUpdate = TimeSpan.Zero;
 
     /// <summary>
     /// What the current spread is for shooting. This gets changed every time the gun fires.
@@ -70,6 +71,47 @@ public sealed partial class GunComponent : Component
     [DataField]
     [AutoNetworkedField]
     public Angle CurrentAngle;
+
+    /// <summary>
+    /// Fuck the entirety of SharedGunSystem.
+    /// </summary>
+    [AutoNetworkedField]
+    [ViewVariables(VVAccess.ReadWrite)]
+    public Angle BonusAngle;
+
+    /// <summary>
+    /// I give up.
+    /// </summary>
+    [AutoNetworkedField, ViewVariables(VVAccess.ReadOnly)]
+    public TimeSpan BonusAngleLastUpdate;
+
+    [DataField]
+    [AutoNetworkedField]
+    public Angle BonusAngleDecay = Angle.FromDegrees(40);
+
+    [DataField]
+    [AutoNetworkedField]
+    public Angle MaxBonusAngle = Angle.FromDegrees(30);
+
+    [ViewVariables(VVAccess.ReadWrite)]
+    [AutoNetworkedField]
+    public Angle BonusAngleDecayModified;
+
+    [ViewVariables(VVAccess.ReadWrite)]
+    [AutoNetworkedField]
+    public Angle MaxBonusAngleModified;
+
+    /// <summary>
+    /// Bonus spread angle increase per tile traversed (assuming zero travel time)
+    /// </summary>
+    [DataField, AutoNetworkedField]
+    public Angle BonusAngleIncreaseMove = Angle.FromDegrees(20);
+
+    /// <summary>
+    /// Bonus spread angle increase per angle turned (assuming instantaneous turn)
+    /// </summary>
+    [DataField, AutoNetworkedField]
+    public Angle BonusAngleIncreaseTurn = Angle.FromDegrees(0.25);
 
     /// <summary>
     /// The base value for how much the spread increases every time the gun fires.
@@ -276,6 +318,7 @@ public sealed partial class GunComponent : Component
     /// </summary>
     [DataField]
     public float FireOnDropChance = 0.1f;
+
 }
 
 [Flags]
