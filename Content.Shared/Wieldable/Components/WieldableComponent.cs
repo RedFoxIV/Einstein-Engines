@@ -37,6 +37,12 @@ public sealed partial class WieldableComponent : Component
     public string? WieldedInhandPrefix = "wielded";
 
     public string? OldInhandPrefix = null;
+
+    /// <summary>
+    /// Automatically attempts to wield the item upon being picked or switched to (while held)
+    /// </summary>
+    [DataField]
+    public bool AutoWield = true;
 }
 
 [Serializable, NetSerializable]

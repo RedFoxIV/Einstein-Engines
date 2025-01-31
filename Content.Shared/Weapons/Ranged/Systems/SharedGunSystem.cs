@@ -139,9 +139,10 @@ public abstract partial class SharedGunSystem : EntitySystem
     protected void UpdateAngles(TimeSpan curTime, GunComponent component, double angleIncrease = 0)
     {
         var timeSinceLastFire = (curTime - component.CurrentAngleLastUpdate).TotalSeconds;
-
+        // Two clamps, because first we need to compute how much CurrentAngle has decreased since the last time we fired
+        // If we ignore the first clamp, CurrentAngle may "go" into negatives, making the first shot after a while have less or even no inaccuracy
         var oldTheta = MathHelper.Clamp(component.CurrentAngle - component.AngleDecayModified * timeSinceLastFire, component.MinAngleModified, component.MaxAngleModified);
-        var newTheta = MathHelper.Clamp(oldTheta + angleIncrease, component.MinAngleModified.Theta, component.MaxAngleModified.Theta);
+        var newTheta = MathHelper.Clamp(oldTheta + angleIncrease, component.MinAngleModified, component.MaxAngleModified.Theta);
         component.CurrentAngle = new Angle(newTheta);
         component.CurrentAngleLastUpdate = curTime;
 
@@ -629,15 +630,17 @@ public abstract partial class SharedGunSystem : EntitySystem
         comp.CameraRecoilScalarModified = ev.CameraRecoilScalar;
         comp.AngleIncreaseModified = ev.AngleIncrease;
         comp.AngleDecayModified = ev.AngleDecay;
-        comp.MaxAngleModified = ev.MaxAngle;
-        comp.MinAngleModified = ev.MinAngle;
+        comp.MaxAngleModified = ClampAngle(ev.MaxAngle);
+        comp.MinAngleModified = ClampAngle(ev.MinAngle);
         comp.BonusAngleDecayModified = ev.BonusAngleDecay;
-        comp.MaxBonusAngleModified = ev.MaxBonusAngle;
+        comp.MaxBonusAngleModified = ClampAngle(ev.MaxBonusAngle);
         comp.ShotsPerBurstModified = ev.ShotsPerBurst;
         comp.FireRateModified = ev.FireRate;
         comp.ProjectileSpeedModified = ev.ProjectileSpeed;
 
         Dirty(gun);
+
+        Angle ClampAngle(Angle ang) => Math.Clamp(ang, 0, Math.Tau);
     }
 
     protected abstract void CreateEffect(EntityUid gunUid, MuzzleFlashEvent message, EntityUid? user = null);

@@ -8,16 +8,20 @@ namespace Content.Client.Weapons.Ranged;
 
 public sealed class ShowSpreadCommand : IConsoleCommand
 {
-    [Dependency] private readonly IReflectionManager _wehavereflectionathome = default!;
-
     public string Command => "showgunspread";
     public string Description => $"Shows gun spread overlay for debugging";
     public string Help => $"{Command} off/partial/full";
 
+    readonly Dictionary<string, GunSpreadOverlayEnum> dick = new() {
+        {"off", GunSpreadOverlayEnum.Off},
+        {"partial", GunSpreadOverlayEnum.Partial },
+        {"full", GunSpreadOverlayEnum.Full}
+    };
+
     public CompletionResult GetCompletion(IConsoleShell shell, string[] args)
     {
         if (args.Length <= 1)
-            return CompletionResult.FromOptions(["off", "partial", "full"]);
+            return CompletionResult.FromOptions(dick.Keys);
         return CompletionResult.Empty;
     }
 
@@ -26,12 +30,12 @@ public sealed class ShowSpreadCommand : IConsoleCommand
         var system = IoCManager.Resolve<IEntitySystemManager>().GetEntitySystem<GunSystem>();
 
         if (args.Length != 1 ||
-          !_wehavereflectionathome.TryParseEnumReference($"enum.{nameof(GunSpreadOverlayEnum)}.{args[0]}", out var e, false))
+            !dick.TryGetValue(args[0].ToLower(), out var option))
         {
             shell.WriteLine(Help);
             return;
         }
-        GunSpreadOverlayEnum option = (GunSpreadOverlayEnum) e;
+
         if (system.SpreadOverlay == option)
         {
             shell.WriteLine($"Spread overlay already set to \"{system.SpreadOverlay}\".");

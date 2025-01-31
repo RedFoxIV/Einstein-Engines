@@ -44,7 +44,7 @@
 
 - type: entity
   id: PelletShotgunSpread
-  categories: [ HideSpawnMenu ]
+  #categories: [ HideSpawnMenu ]
   parent: PelletShotgun
   components:
   - type: ProjectileSpread

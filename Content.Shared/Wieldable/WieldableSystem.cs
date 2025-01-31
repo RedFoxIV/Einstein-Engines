@@ -46,6 +46,7 @@ public sealed class WieldableSystem : EntitySystem
         SubscribeLocalEvent<WieldableComponent, VirtualItemDeletedEvent>(OnVirtualItemDeleted);
         SubscribeLocalEvent<WieldableComponent, GetVerbsEvent<InteractionVerb>>(AddToggleWieldVerb);
         SubscribeLocalEvent<WieldableComponent, HandDeselectedEvent>(OnDeselectWieldable);
+        SubscribeLocalEvent<WieldableComponent, HandSelectedEvent>(OnSelectWieldable);
 
         SubscribeLocalEvent<MeleeRequiresWieldComponent, AttemptMeleeEvent>(OnMeleeAttempt);
         SubscribeLocalEvent<GunRequiresWieldComponent, ExaminedEvent>(OnExamineRequires);
@@ -106,6 +107,15 @@ public sealed class WieldableSystem : EntitySystem
         TryUnwield(uid, component, args.User);
     }
 
+    private void OnSelectWieldable(EntityUid uid, WieldableComponent component, HandSelectedEvent args)
+    {
+        if (component.Wielded || // that's weird, but whatever
+            component.AutoWield && _handsSystem.EnumerateHands(args.User).Count() > 2)
+            return;
+
+        TryWield(uid, component, args.User, false, true);
+    }
+
     private void OnGunRefreshModifiers(Entity<GunWieldBonusComponent> bonus, ref GunRefreshModifiersEvent args)
     {
         if (TryComp(bonus, out WieldableComponent? wield) &&
@@ -150,7 +160,7 @@ public sealed class WieldableSystem : EntitySystem
             Text = component.Wielded ? Loc.GetString("wieldable-verb-text-unwield") : Loc.GetString("wieldable-verb-text-wield"),
             Act = component.Wielded
                 ? () => TryUnwield(uid, component, args.User)
-                : () => TryWield(uid, component, args.User)
+                : () => TryWield(uid, component, args.User, true)
         };
 
         args.Verbs.Add(verb);
@@ -162,12 +172,12 @@ public sealed class WieldableSystem : EntitySystem
             return;
 
         if (!component.Wielded)
-            args.Handled = TryWield(uid, component, args.User);
+            args.Handled = TryWield(uid, component, args.User, true);
         else if (component.UnwieldOnUse)
             args.Handled = TryUnwield(uid, component, args.User);
     }
 
-    public bool CanWield(EntityUid uid, WieldableComponent component, EntityUid user, bool quiet = false)
+    public bool CanWield(EntityUid uid, WieldableComponent component, EntityUid user, bool quiet = false, bool canFreeHands = false)
     {
         // Do they have enough hands free?
         if (!EntityManager.TryGetComponent<HandsComponent>(user, out var hands))
@@ -185,7 +195,13 @@ public sealed class WieldableSystem : EntitySystem
             return false;
         }
 
-        if (_handsSystem.CountFreeableHands((user, hands)) < component.FreeHandsRequired)
+        int availableHands = 0;
+        if (canFreeHands)
+            availableHands = _handsSystem.CountFreeableHands((user, hands));
+        else
+            availableHands = _handsSystem.EnumerateHands(user, hands).Where(hand => hand.IsEmpty).Count();
+
+        if (availableHands < component.FreeHandsRequired)
         {
             if (!quiet)
             {
@@ -204,9 +220,9 @@ public sealed class WieldableSystem : EntitySystem
     ///     Attempts to wield an item, starting a UseDelay after.
     /// </summary>
     /// <returns>True if the attempt wasn't blocked.</returns>
-    public bool TryWield(EntityUid used, WieldableComponent component, EntityUid user)
+    public bool TryWield(EntityUid used, WieldableComponent component, EntityUid user, bool dropOthers = false, bool quietFail = false, bool wieldPopup = true)
     {
-        if (!CanWield(used, component, user))
+        if (!CanWield(used, component, user, quietFail, dropOthers))
             return false;
 
         var ev = new BeforeWieldEvent();
@@ -234,7 +250,7 @@ public sealed class WieldableSystem : EntitySystem
             var virtuals = new List<EntityUid>();
             for (var i = 0; i < component.FreeHandsRequired; i++)
             {
-                if (_virtualItemSystem.TrySpawnVirtualItemInHand(used, user, out var virtualItem, true))
+                if (_virtualItemSystem.TrySpawnVirtualItemInHand(used, user, out var virtualItem, dropOthers))
                 {
                     virtuals.Add(virtualItem.Value);
                     continue;
@@ -251,14 +267,17 @@ public sealed class WieldableSystem : EntitySystem
             && !_delay.TryResetDelay((used, useDelay), true))
             return false;
 
+        var targEv = new ItemWieldedEvent();
+        RaiseLocalEvent(used, ref targEv);
+        Dirty(used, component);
+            
+        if (!wieldPopup)
+            return true;
+
         var selfMessage = Loc.GetString("wieldable-component-successful-wield", ("item", used));
         var othersMessage = Loc.GetString("wieldable-component-successful-wield-other", ("user", Identity.Entity(user, EntityManager)), ("item", used));
         _popupSystem.PopupPredicted(selfMessage, othersMessage, user, user);
 
-        var targEv = new ItemWieldedEvent();
-        RaiseLocalEvent(used, ref targEv);
-
-        Dirty(used, component);
         return true;
     }
 

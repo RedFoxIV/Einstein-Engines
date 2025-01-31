@@ -1,5 +1,6 @@
 using Content.Client.Hands.Systems;
 using Content.Client.NPC.HTN;
+using Content.Client.Weapons.Ranged.Systems;
 using Content.Shared.CCVar;
 using Content.Shared.CombatMode;
 using Robust.Client.Graphics;
@@ -16,6 +17,7 @@ public sealed class CombatModeSystem : SharedCombatModeSystem
     [Dependency] private readonly IConfigurationManager _cfg = default!;
     [Dependency] private readonly IInputManager _inputManager = default!;
     [Dependency] private readonly IEyeManager _eye = default!;
+    [Dependency] private readonly GunSystem _gun = default!;
 
     /// <summary>
     /// Raised whenever combat mode changes.

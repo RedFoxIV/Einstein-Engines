@@ -1,15 +1,23 @@
 using System.Numerics;
+using Content.Client.Resources;
+using Content.Client.Viewport;
 using Content.Client.Weapons.Ranged.Systems;
 using Content.Shared.Contests;
 using Content.Shared.Weapons.Ranged.Components;
 using MathNet.Numerics.RootFinding;
+using Microsoft.CodeAnalysis.Elfie.Diagnostics;
+using Robust.Client.GameObjects;
 using Robust.Client.Graphics;
 using Robust.Client.Input;
 using Robust.Client.Player;
+using Robust.Client.ResourceManagement;
+using Robust.Client.Utility;
+using Robust.Shared.ContentPack;
 using Robust.Shared.Enums;
 using Robust.Shared.Map;
 using Robust.Shared.Maths;
 using Robust.Shared.Timing;
+using Robust.Shared.Utility;
 
 
 namespace Content.Client.Weapons.Ranged;
@@ -78,54 +86,52 @@ public class GunSpreadOverlay : Overlay
         }
 
         // (☞ﾟヮﾟ)☞
-        var timeSinceLastFire = (_timing.CurTime - gun.CurrentAngleLastUpdate).TotalSeconds;
-        var timeSinceLastBonusUpdate = (_timing.CurTime - gun.BonusAngleLastUpdate).TotalSeconds;
-        var maxBonusSpread = gun.MaxBonusAngleModified;
-        var bonusSpread = new Angle(MathHelper.Clamp(gun.BonusAngle - gun.BonusAngleDecayModified * timeSinceLastBonusUpdate,
-            0, gun.MaxBonusAngleModified));
-
-        var maxSpread = gun.MaxAngleModified;
-        var minSpread = gun.MinAngleModified;
-        var currentAngle = new Angle(MathHelper.Clamp(gun.CurrentAngle.Theta - gun.AngleDecayModified.Theta * timeSinceLastFire,
-            gun.MinAngleModified.Theta, gun.MaxAngleModified.Theta));
+        double timeSinceLastFire = (_timing.CurTime - gun.CurrentAngleLastUpdate).TotalSeconds;
+        double timeSinceLastBonusUpdate = (_timing.CurTime - gun.BonusAngleLastUpdate).TotalSeconds;
+        double maxBonusSpread = gun.MaxBonusAngleModified * contest;
+        double bonusSpread = new Angle(MathHelper.Clamp(gun.BonusAngle - gun.BonusAngleDecayModified * timeSinceLastBonusUpdate,
+                                                        0, maxBonusSpread)) * contest;
+        double maxSpread = gun.MaxAngleModified * contest;
+        double minSpread = Math.Max(gun.MinAngleModified, 0) * contest;
+        double currentAngle = new Angle(MathHelper.Clamp(gun.CurrentAngle.Theta - gun.AngleDecayModified.Theta * timeSinceLastFire,
+                                                        minSpread, maxSpread)) * contest;
         var direction = (mousePos.Position - mapPos.Position);
 
         Vector2 from = mapPos.Position;
         Vector2 to = mousePos.Position + direction;
 
-        DrawSpread(worldHandle, gun, from, direction, contest, timeSinceLastFire, maxBonusSpread, bonusSpread, maxSpread, minSpread, currentAngle);
+        DrawSpread(worldHandle, gun, from, direction, timeSinceLastFire, maxBonusSpread, bonusSpread, maxSpread, minSpread, currentAngle);
     }
 
-    protected void DrawCone(DrawingHandleWorld handle, Vector2 from, Vector2 direction, Angle angle, float contestMul, Color color, float lerp = 1f)
+    protected virtual void DrawCone(DrawingHandleWorld handle, Vector2 from, Vector2 direction, Angle angle, Color color, float lerp = 1f)
     {
-        angle *= contestMul;
         var dir1 = angle.RotateVec(direction);
         var dir2 = (-angle).RotateVec(direction);
         handle.DrawLine(from + dir1 * (1 - lerp), from + dir1 * (1 + lerp), color);
         handle.DrawLine(from + dir2 * (1 - lerp), from + dir2 * (1 + lerp), color);
     }
 
-    protected virtual void DrawSpread(DrawingHandleWorld worldHandle, Shared.Weapons.Ranged.Components.GunComponent gun, Vector2 from, Vector2 direction, float contest, double timeSinceLastFire, Angle maxBonusSpread, Angle bonusSpread, Angle maxSpread, Angle minSpread, Angle currentAngle)
+    protected virtual void DrawSpread(DrawingHandleWorld worldHandle, GunComponent gun, Vector2 from, Vector2 direction, double timeSinceLastFire, Angle maxBonusSpread, Angle bonusSpread, Angle maxSpread, Angle minSpread, Angle currentAngle)
     {
         worldHandle.DrawLine(from, direction*2, Color.Orange);
 
         // Show max spread either side
-        DrawCone(worldHandle, from, direction, maxSpread + bonusSpread, contest, Color.Red);
+        DrawCone(worldHandle, from, direction, maxSpread + bonusSpread, Color.Red);
 
         // Show min spread either side
-        DrawCone(worldHandle, from, direction, minSpread + bonusSpread, contest, Color.Green);
+        DrawCone(worldHandle, from, direction, minSpread + bonusSpread, Color.Green);
 
         // Show current angle
-        DrawCone(worldHandle, from, direction, currentAngle + bonusSpread, contest, Color.Yellow);
+        DrawCone(worldHandle, from, direction, currentAngle + bonusSpread, Color.Yellow);
 
-        DrawCone(worldHandle, from, direction, maxBonusSpread, contest, Color.BetterViolet);
+        DrawCone(worldHandle, from, direction, maxBonusSpread, Color.BetterViolet);
 
-        DrawCone(worldHandle, from, direction, bonusSpread, contest, Color.Violet);
+        DrawCone(worldHandle, from, direction, bonusSpread, Color.Violet);
 
         var oldTheta = MathHelper.Clamp(gun.CurrentAngle - gun.AngleDecayModified * timeSinceLastFire, gun.MinAngleModified, gun.MaxAngleModified);
         var newTheta = MathHelper.Clamp(oldTheta + gun.AngleIncreaseModified.Theta, gun.MinAngleModified.Theta, gun.MaxAngleModified.Theta);
         var shit = new Angle(newTheta + bonusSpread);
-        DrawCone(worldHandle, from, direction, shit, contest, Color.Gray);
+        DrawCone(worldHandle, from, direction, shit, Color.Gray);
     }
 
     protected virtual void Reset() { }
@@ -135,19 +141,35 @@ public class GunSpreadOverlay : Overlay
 
 public sealed class PartialGunSpreadOverlay : GunSpreadOverlay
 {
-
+    private SpriteSystem _sprite;
     private GunComponent? _lastGun;
 
     private double SmoothedCurrentAngle;
     private double SmoothedBonusSpread;
 
-    public PartialGunSpreadOverlay(IEntityManager entManager, IEyeManager eyeManager, IGameTiming timing, IInputManager input, IPlayerManager player, GunSystem system, SharedTransformSystem transform, ContestsSystem contest) : base(entManager, eyeManager, timing, input, player, system, transform, contest) { }
+    private Texture _texture1;
+    private Texture _texture2;
+    private Texture _texture3;
+    private Texture _texture4;
+    private Texture _textureS;
+    private Texture _textureL;
+
+    public PartialGunSpreadOverlay(IEntityManager entManager, IEyeManager eyeManager, IGameTiming timing, IInputManager input, IPlayerManager player, GunSystem system, SharedTransformSystem transform, ContestsSystem contest, SpriteSystem sprite) : base(entManager, eyeManager, timing, input, player, system, transform, contest)
+    {
+        _sprite = sprite;
+        _texture1 = _sprite.Frame0(new SpriteSpecifier.Texture(new ResPath("/Textures/Interface/gun-spread-marker1.png")));
+        _texture2 = _sprite.Frame0(new SpriteSpecifier.Texture(new ResPath("/Textures/Interface/gun-spread-marker2.png")));
+        _texture3 = _sprite.Frame0(new SpriteSpecifier.Texture(new ResPath("/Textures/Interface/gun-spread-marker3.png")));
+        _texture4 = _sprite.Frame0(new SpriteSpecifier.Texture(new ResPath("/Textures/Interface/gun-spread-marker4.png")));
+        _textureS = _sprite.Frame0(new SpriteSpecifier.Texture(new ResPath("/Textures/Interface/gun-spread-marker-s.png")));
+        _textureL = _sprite.Frame0(new SpriteSpecifier.Texture(new ResPath("/Textures/Interface/gun-spread-marker-l.png")));
+    }
 
     protected override void Reset() { _lastGun = null; }
 
-    protected override void DrawSpread(DrawingHandleWorld worldHandle, GunComponent gun, Vector2 from, Vector2 direction, float contest, double timeSinceLastFire, Angle maxBonusSpread, Angle bonusSpread, Angle maxSpread, Angle minSpread, Angle currentAngle)
+    protected override void DrawSpread(DrawingHandleWorld worldHandle, GunComponent gun, Vector2 from, Vector2 direction, double timeSinceLastFire, Angle maxBonusSpread, Angle bonusSpread, Angle maxSpread, Angle minSpread, Angle currentAngle)
     {
-        if(_lastGun != gun)
+        if (_lastGun != gun)
         {
             _lastGun = gun;
             SmoothedCurrentAngle = currentAngle;
@@ -162,53 +184,60 @@ public sealed class PartialGunSpreadOverlay : GunSpreadOverlay
         float L = (float) ((currentAngle - minSpread) / (maxSpread - minSpread)); // not smoothed
         float hue = Math.Clamp(third - third * L, 0, third);
         Color color = Color.FromHsv(new Robust.Shared.Maths.Vector4(hue, 1, 1, 1));
-        // Show current angle
-        DrawCone(worldHandle, from, direction, SmoothedCurrentAngle + SmoothedBonusSpread, contest, color, 0.15f);
-        DrawCone(worldHandle, from, direction, SmoothedCurrentAngle, contest, color.WithAlpha(0.1f), 0.15f);
+        DrawCone(worldHandle, from, direction, SmoothedCurrentAngle + SmoothedBonusSpread, color, 0.15f);
+        DrawCone(worldHandle, from, direction, SmoothedCurrentAngle, color.WithAlpha(0.33f), 0.15f);
         //color = Color.AliceBlue;
         //DrawCone(worldHandle, from, direction, currentAngle + bonusSpread, contest, color, 0.15f);
         //DrawCone(worldHandle, from, direction, currentAngle, contest, color.WithAlpha(0.1f), 0.15f);
     }
 
-
-    private class AverageRingBuffer
+    protected override void DrawCone(DrawingHandleWorld handle, Vector2 from, Vector2 direction, Angle angle, Color color, float lineLerp = 1f)
     {
-        private double[] _buffer;
+        var mpp = 1f / EyeManager.PixelsPerMeter;
 
-        private int WritePtr = 0;
-        public int Size { get; private set; }
-        public int Count { get; private set; } = 0;
-        public double Sum { get; private set; } = 0;
-        public double Average => Sum / Count;
+        var dir1 = angle.RotateVec(direction);
+        var dir2 = (-angle).RotateVec(direction);
 
-        public AverageRingBuffer(int size)
-        {
-            Size = size;
-            _buffer = new double[size];
-        }
+        Angle negRot = -_eye.CurrentEye.Rotation;
 
-        public AverageRingBuffer(int size, double def)
-        {
-            Size = size;
-            _buffer = new double[size];
-            Fill(def);
-        }
+        handle.SetTransform(from, 0);
 
-        public void Fill(double value)
-        {
-            Array.Fill(_buffer, value);
-            Count = Size;
-            Sum = value * Count;
-        } 
+        //handle.DrawRectCentered(dir1 * 0.76f, new Vector2(mpp * 2.5f), negRot, color, true);
+        //handle.DrawRectCentered(dir2 * 0.76f, new Vector2(mpp * 2.5f), negRot, color, true);
+        //handle.DrawRectCentered(dir1 * 0.88f, new Vector2(mpp * 1),    negRot, color, true);
+        //handle.DrawRectCentered(dir2 * 0.88f, new Vector2(mpp * 1),    negRot, color, true);
+        //handle.DrawRectCentered(dir1 * 1f,    new Vector2(mpp * 1),    negRot, color, true);
+        //handle.DrawRectCentered(dir2 * 1f,    new Vector2(mpp * 1),    negRot, color, true);
+        //handle.DrawRectCentered(dir1 * 1.12f, new Vector2(mpp * 1),    negRot, color, true);
+        //handle.DrawRectCentered(dir2 * 1.12f, new Vector2(mpp * 1),    negRot, color, true);
+        //handle.DrawRectCentered(dir1 * 1.24f, new Vector2(mpp * 2.5f), negRot, color, true);
+        //handle.DrawRectCentered(dir2 * 1.24f, new Vector2(mpp * 2.5f), negRot, color, true);
 
-        public void Write(double value)
-        {
-            Sum -= _buffer[WritePtr];
-            _buffer[WritePtr] = value;
-            Sum += _buffer[WritePtr];
-            WritePtr = (WritePtr + 1) % Size;
-            if (Count < Size)
-                Count++;
-        }
+        handle.DrawTextureCentered(_textureL, dir1 * 0.76f, negRot, color);
+        handle.DrawTextureCentered(_textureL, dir2 * 0.76f, negRot, color);
+        handle.DrawTextureCentered(_textureS, dir1 * 0.88f, negRot, color);
+        handle.DrawTextureCentered(_textureS, dir2 * 0.88f, negRot, color);
+        handle.DrawTextureCentered(_textureL, dir1 * 1f,    negRot, color);
+        handle.DrawTextureCentered(_textureL, dir2 * 1f,    negRot, color);
+        handle.DrawTextureCentered(_textureS, dir1 * 1.12f, negRot, color);
+        handle.DrawTextureCentered(_textureS, dir2 * 1.12f, negRot, color);
+        handle.DrawTextureCentered(_textureL, dir1 * 1.24f, dir1.ToAngle() + Math.PI/2, color);
+        handle.DrawTextureCentered(_textureL, dir2 * 1.24f, dir2.ToAngle() + Math.PI/2, color);
+
     }
+}   
+
+public static class DrawingHandleWorldExt
+{
+    public static void DrawTextureCentered(this DrawingHandleWorld handle, Texture tex, Vector2 position, Color? color = null) =>
+        handle.DrawTextureRect(tex, Box2.CenteredAround(position, tex.Size / (float) EyeManager.PixelsPerMeter), color);
+
+    public static void DrawTextureCentered(this DrawingHandleWorld handle, Texture tex, Vector2 position, Angle angle, Color? color = null) =>
+        handle.DrawTextureRect(tex, new Box2Rotated(Box2.CenteredAround(position, tex.Size / (float) EyeManager.PixelsPerMeter), angle, position), color);
+
+    public static void DrawRectCentered(this DrawingHandleWorld handle, Vector2 position, Vector2 size, Color color, bool filled = false) =>
+        handle.DrawRect(Box2.CenteredAround(position, size), color, filled);
+
+    public static void DrawRectCentered(this DrawingHandleWorld handle, Vector2 position, Vector2 size, Angle rot, Color color, bool filled = false) =>
+        handle.DrawRect(new Box2Rotated(Box2.CenteredAround(position, size), rot, position), color, filled);
 }

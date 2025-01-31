@@ -1,5 +1,6 @@
 using System.Numerics;
 using Content.Client.Animations;
+using Content.Client.CombatMode;
 using Content.Client.Gameplay;
 using Content.Client.Items;
 using Content.Client.Weapons.Ranged.Components;
@@ -40,6 +41,8 @@ public sealed partial class GunSystem : SharedGunSystem
     [Dependency] private readonly ContestsSystem _contest = default!;
     [Dependency] private readonly SharedCameraRecoilSystem _recoil = default!;
     [Dependency] private readonly SharedMapSystem _maps = default!;
+    [Dependency] private readonly SpriteSystem _sprite = default!;
+    [Dependency] private readonly CombatModeSystem _combatMode = default!;
 
     [ValidatePrototypeId<EntityPrototype>]
     public const string HitscanProto = "HitscanEffect";
@@ -94,7 +97,8 @@ public sealed partial class GunSystem : SharedGunSystem
                 _player,
                 this,
                 TransformSystem,
-                _contest));
+                _contest,
+                _sprite));
         }
 
         void AddFullSpreadOverlay(IOverlayManager overlayManager)
@@ -127,7 +131,14 @@ public sealed partial class GunSystem : SharedGunSystem
         InitializeSpentAmmo();
 
         // check cvars for default spread overlay mode
-        SpreadOverlay = GunSpreadOverlayEnum.Partial;
+        //SpreadOverlay = GunSpreadOverlayEnum.Partial;
+        _combatMode.LocalPlayerCombatModeUpdated += OnCombatModeUpdated;
+    }
+
+    private void OnCombatModeUpdated(bool enabled)
+    {
+        if(SpreadOverlay != GunSpreadOverlayEnum.Full)
+            SpreadOverlay = enabled ? GunSpreadOverlayEnum.Partial : GunSpreadOverlayEnum.Off;
     }
 
     private void OnUpdateClientAmmo(EntityUid uid, AmmoCounterComponent ammoComp, ref UpdateClientAmmoEvent args)
