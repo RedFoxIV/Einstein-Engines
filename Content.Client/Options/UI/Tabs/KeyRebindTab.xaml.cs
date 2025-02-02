@@ -198,6 +198,7 @@ namespace Content.Client.Options.UI.Tabs
             AddButton(ContentKeyFunctions.ActivateItemInWorld);
             AddButton(ContentKeyFunctions.AltActivateItemInWorld);
             AddButton(ContentKeyFunctions.Drop);
+            AddButton(ContentKeyFunctions.PreciseDrop);
             AddButton(ContentKeyFunctions.ExamineEntity);
             AddButton(ContentKeyFunctions.SwapHands);
             AddButton(ContentKeyFunctions.MoveStoredItem);

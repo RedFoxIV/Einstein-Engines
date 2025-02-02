@@ -2,16 +2,20 @@ using System.Numerics;
 using Content.Shared.Hands.Components;
 using Content.Shared.Interaction;
 using Content.Shared.Inventory.VirtualItem;
+using Content.Shared.RenderOrderSystem;
 using Content.Shared.Tag;
 using Robust.Shared.Containers;
+using Robust.Shared.GameStates;
 using Robust.Shared.Map;
 using Robust.Shared.Network;
+using Robust.Shared.Timing;
 
 namespace Content.Shared.Hands.EntitySystems;
 
 public abstract partial class SharedHandsSystem
 {
     [Dependency] private readonly TagSystem _tagSystem = default!;
+    [Dependency] private readonly SharedRenderOrderSystem _renderOrder = default!;
     [Dependency] private readonly INetManager _net = default!;
 
     private void InitializeDrop()
@@ -110,7 +114,7 @@ public abstract partial class SharedHandsSystem
     /// <summary>
     ///     Drops a hands contents at the target location.
     /// </summary>
-    public bool TryDrop(EntityUid uid, Hand hand, EntityCoordinates? targetDropLocation = null, bool checkActionBlocker = true, bool doDropInteraction = true, HandsComponent? handsComp = null)
+    public bool TryDrop(EntityUid uid, Hand hand, EntityCoordinates? targetDropLocation = null, bool checkActionBlocker = true, bool doDropInteraction = true, HandsComponent? handsComp = null, double dropAngle = 0)
     {
         if (!Resolve(uid, ref handsComp))
             return false;
@@ -146,7 +150,7 @@ public abstract partial class SharedHandsSystem
         var (itemPos, itemRot) = TransformSystem.GetWorldPositionRotation(entity);
         var origin = new MapCoordinates(itemPos, itemXform.MapID);
         var target = TransformSystem.ToMapCoordinates(targetDropLocation.Value);
-        TransformSystem.SetWorldPositionRotation(entity, GetFinalDropCoordinates(uid, origin, target), itemRot);
+        TransformSystem.SetWorldPositionRotation(entity, GetFinalDropCoordinates(uid, origin, target), itemRot + dropAngle);
         return true;
     }
 
@@ -175,7 +179,7 @@ public abstract partial class SharedHandsSystem
     /// <summary>
     ///     Calculates the final location a dropped item will end up at, accounting for max drop range and collision along the targeted drop path, Does a check to see if a user should bypass those checks as well.
     /// </summary>
-    private Vector2 GetFinalDropCoordinates(EntityUid user, MapCoordinates origin, MapCoordinates target)
+    public Vector2 GetFinalDropCoordinates(EntityUid user, MapCoordinates origin, MapCoordinates target)
     {
         var dropVector = target.Position - origin.Position;
         var requestedDropDistance = dropVector.Length();
@@ -196,6 +200,17 @@ public abstract partial class SharedHandsSystem
             return origin.Position + dropVector.Normalized() * dropLength;
         return target.Position;
     }
+
+    /// <summary>
+    ///     Calculates the final location a dropped item will end up at, accounting for max drop range and collision along the targeted drop path, Does a check to see if a user should bypass those checks as well.
+    /// </summary>
+    public Vector2 GetFinalDropCoordinates(EntityUid user, MapCoordinates target)
+    {
+        var origin = Transform(user).MapPosition;
+        return GetFinalDropCoordinates(user, origin, target);
+    }
+
+    private uint drawOrderCounter = 0;
 
     /// <summary>
     ///     Removes the contents of a hand from its container. Assumes that the removal is allowed. In general, you should not be calling this directly.
@@ -221,10 +236,14 @@ public abstract partial class SharedHandsSystem
 
         Dirty(uid, handsComp);
 
+        _renderOrder.SetRenderOrder(entity, EntityManager.CurrentTick.Value);
+
         if (doDropInteraction)
             _interactionSystem.DroppedInteraction(uid, entity);
 
+        RaiseLocalEvent(entity, new ItemDroppedEvent(uid));
         if (hand == handsComp.ActiveHand)
             RaiseLocalEvent(entity, new HandDeselectedEvent(uid));
     }
 }
+

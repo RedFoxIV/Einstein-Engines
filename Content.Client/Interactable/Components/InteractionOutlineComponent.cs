@@ -40,7 +40,7 @@ namespace Content.Client.Interactable.Components
             {
                 if (sprite.PostShader == _shader)
                     sprite.PostShader = null;
-                sprite.RenderOrder = 0;
+                //sprite.RenderOrder = 0;
             }
 
             _shader?.Dispose();

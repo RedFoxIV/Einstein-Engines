@@ -162,6 +162,9 @@ namespace Content.Client.ContextMenu.UI
 
         private bool HandleOpenEntityMenu(in PointerInputCmdHandler.PointerInputCmdArgs args)
         {
+            if (!_gameTiming.IsFirstTimePredicted)
+                return false;
+
             if (args.State != BoundKeyState.Down)
                 return false;
 
@@ -176,7 +179,7 @@ namespace Content.Client.ContextMenu.UI
             if (_verbSystem.TryGetEntityMenuEntities(coords, out var entities))
                 OpenRootMenu(entities);
 
-            return true;
+            return false;
         }
 
         /// <summary>

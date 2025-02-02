@@ -6,6 +6,9 @@ using Content.Shared.Input;
 using Content.Shared.Interaction;
 using Content.Shared.Inventory.VirtualItem;
 using Content.Shared.Localizations;
+using Content.Shared.Movement.Systems;
+using Robust.Shared.GameStates;
+using Robust.Shared.Input;
 using Robust.Shared.Input.Binding;
 using Robust.Shared.Map;
 using Robust.Shared.Player;
@@ -32,7 +35,74 @@ public abstract partial class SharedHandsSystem : EntitySystem
             .Bind(ContentKeyFunctions.AltUseItemInHand, InputCmdHandler.FromDelegate(HandleAltUseInHand, handle: false, outsidePrediction: false))
             .Bind(ContentKeyFunctions.SwapHands, InputCmdHandler.FromDelegate(SwapHandsPressed, handle: false, outsidePrediction: false))
             .Bind(ContentKeyFunctions.Drop, new PointerInputCmdHandler(DropPressed))
+            .Bind(ContentKeyFunctions.PreciseDrop, new PointerInputCmdHandler(PreciseDropButton, false, true))
+            .Bind(ContentKeyFunctions.MouseWheelUp, new PointerInputCmdHandler(PreciseDropMWheelUp))
+            .Bind(ContentKeyFunctions.MouseWheelDown, new PointerInputCmdHandler(PreciseDropMWheelDown))
+            .Bind(EngineKeyFunctions.Use, new PointerInputCmdHandler(PreciseDropCancel))
+            .Bind(EngineKeyFunctions.UseSecondary, new PointerInputCmdHandler(PreciseDropCancel))
             .Register<SharedHandsSystem>();
+    }
+
+    private bool PreciseDropCancel(in PointerInputCmdHandler.PointerInputCmdArgs args)
+    {
+        if (args.Session?.AttachedEntity is EntityUid uid && HasComp<HoldingDropComponent>(uid))
+            RemComp<HoldingDropComponent>(uid);
+        return false;
+    }
+
+    private bool PreciseDropButton(in PointerInputCmdHandler.PointerInputCmdArgs args)
+    {
+        if (args.Session?.AttachedEntity is not EntityUid uid)
+            return false;
+
+        if(!TryComp<HandsComponent>(uid, out var hands) ||
+            hands.ActiveHandEntity == null)
+        {
+            if (HasComp<HoldingDropComponent>(uid))
+                RemComp<HoldingDropComponent>(uid);
+            return false;
+        }
+
+        if(args.State == BoundKeyState.Down)
+        {
+            EnsureComp<HoldingDropComponent>(uid);
+            return false;
+        }
+
+        if (!TryComp<HoldingDropComponent>(uid, out var comp))
+            return false;
+        TryDrop(uid, hands.ActiveHand!, args.Coordinates, handsComp: hands, dropAngle: comp.Angle);
+        RemComp<HoldingDropComponent>(uid);
+        return false;
+    }
+
+    private readonly Angle _dropRotationIncrement = Angle.FromDegrees(5);
+    private bool PreciseDropMWheelUp(in PointerInputCmdHandler.PointerInputCmdArgs args)
+    {
+        if (args.Session?.AttachedEntity is not EntityUid uid ||
+            !TryComp<HandsComponent>(uid, out var hands))
+            return false;
+
+        if (!TryComp<HoldingDropComponent>(uid, out var comp))
+            return false;
+
+        comp.Angle += _dropRotationIncrement;
+        Dirty(uid, comp);
+        return false;
+    }
+
+    private bool PreciseDropMWheelDown(in PointerInputCmdHandler.PointerInputCmdArgs args)
+    {
+        if (args.Session?.AttachedEntity is not EntityUid uid ||
+            !TryComp<HandsComponent>(uid, out var hands))
+            return false;
+
+        if (!TryComp<HoldingDropComponent>(uid, out var comp))
+            return false;
+
+        comp.Angle -= _dropRotationIncrement;
+        Dirty(uid, comp);
+        return false;
     }
 
     #region Event and Key-binding Handlers
@@ -213,4 +283,14 @@ public abstract partial class SharedHandsSystem : EntitySystem
             args.PushMarkup(Loc.GetString(locKey, locUser, locItems));
         }
     }
+}
+
+[RegisterComponent]
+[NetworkedComponent, AutoGenerateComponentState]
+public sealed partial class HoldingDropComponent : Component
+{
+    public override bool SendOnlyToOwner => true;
+
+    [AutoNetworkedField]
+    public Angle Angle;
 }

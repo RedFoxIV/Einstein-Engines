@@ -1,6 +1,8 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Content.Client.Examine;
+using Content.Client.Hands;
+using Content.Client.Hands.Systems;
 using Content.Client.Strip;
 using Content.Client.Verbs.UI;
 using Content.Shared._Shitmed.Body.Events; // Shitmed Change
@@ -11,11 +13,17 @@ using Content.Shared.Hands.EntitySystems;
 using Content.Shared.Inventory.VirtualItem;
 using Content.Shared.Item;
 using JetBrains.Annotations;
+using MathNet.Numerics.Distributions;
 using Robust.Client.GameObjects;
+using Robust.Client.Graphics;
+using Robust.Client.Input;
 using Robust.Client.Player;
+using Robust.Client.ResourceManagement;
 using Robust.Client.UserInterface;
+using Robust.Client.UserInterface.CustomControls;
 using Robust.Shared.Containers;
 using Robust.Shared.GameStates;
+using Robust.Shared.Graphics;
 using Robust.Shared.Player;
 using Robust.Shared.Timing;
 
@@ -26,10 +34,12 @@ namespace Content.Client.Hands.Systems
     {
         [Dependency] private readonly IPlayerManager _playerManager = default!;
         [Dependency] private readonly IUserInterfaceManager _ui = default!;
+        [Dependency] private readonly IOverlayManager _overlay = default!;
 
         [Dependency] private readonly SharedContainerSystem _containerSystem = default!;
         [Dependency] private readonly StrippableSystem _stripSys = default!;
         [Dependency] private readonly ExamineSystem _examine = default!;
+        [Dependency] private readonly SharedTransformSystem _transform = default!;
 
         public event Action<string, HandLocation>? OnPlayerAddHand;
         public event Action<string>? OnPlayerRemoveHand;
@@ -52,6 +62,11 @@ namespace Content.Client.Hands.Systems
             SubscribeLocalEvent<HandsComponent, VisualsChangedEvent>(OnVisualsChanged);
             SubscribeLocalEvent<HandsComponent, BodyPartRemovedEvent>(HandleBodyPartRemoved); // Shitmed Change
             SubscribeLocalEvent<HandsComponent, BodyPartDisabledEvent>(HandleBodyPartDisabled); // Shitmed Change
+
+            SubscribeLocalEvent<HoldingDropComponent, ComponentInit>(HoldingDropComponentInit);
+            SubscribeLocalEvent<HoldingDropComponent, ComponentShutdown>(HoldingDropComponentShutdown);
+            //SubscribeLocalEvent<HoldingDropComponent, ComponentInit>(HoldingDropComponentInit);
+            //SubscribeLocalEvent<HoldingDropComponent, ComponentInit>(HoldingDropComponentInit);
 
             OnHandSetActive += OnHandActivated;
         }
@@ -121,6 +136,19 @@ namespace Content.Client.Hands.Systems
         }
         #endregion
 
+        private void HoldingDropComponentInit(EntityUid uid, HoldingDropComponent comp, ComponentInit args)
+        {
+            if (_playerManager.LocalEntity == uid)
+                _overlay.AddOverlay(new DropOverlay(this, _transform));
+        }
+
+        private void HoldingDropComponentShutdown(EntityUid uid, HoldingDropComponent comp, ComponentShutdown args)
+        {
+            if (_playerManager.LocalEntity == uid)
+                _overlay.RemoveOverlay<DropOverlay>();
+        }
+
+
         public void ReloadHandButtons()
         {
             if (!TryGetPlayerHands(out var hands))
@@ -135,8 +163,8 @@ namespace Content.Client.Hands.Systems
         {
             base.DoDrop(uid, hand, doDropInteraction, hands);
 
-            if (TryComp(hand.HeldEntity, out SpriteComponent? sprite))
-                sprite.RenderOrder = EntityManager.CurrentTick.Value;
+            //if (TryComp(hand.HeldEntity, out SpriteComponent? sprite))
+            //    sprite.RenderOrder = EntityManager.CurrentTick.Value;
         }
 
         public EntityUid? GetActiveHandEntity()
@@ -467,5 +495,68 @@ namespace Content.Client.Hands.Systems
 
             OnPlayerSetActiveHand?.Invoke(hand.Comp.ActiveHand.Name);
         }
+    }
+}
+
+
+
+public sealed class DropOverlay : Overlay
+{
+    [Dependency] private readonly IInputManager _input = default!;
+    [Dependency] private readonly IPlayerManager _player = default!;
+    [Dependency] private readonly IClyde _clyde = default!;
+    [Dependency] private readonly IEyeManager _eye = default!;
+    [Dependency] private readonly EntityManager _entMan = default!;
+
+    private readonly HandsSystem _hands;
+    private readonly SharedTransformSystem _transform;
+
+    private readonly Font _font;
+
+    private IRenderTexture _renderBackbuffer;
+
+    public DropOverlay(HandsSystem hands, SharedTransformSystem transform)
+    {
+        IoCManager.InjectDependencies(this);
+        _hands = hands;
+        _transform = transform;
+
+        var cache = IoCManager.Resolve<IResourceCache>();
+        _font = new VectorFont(cache.GetResource<FontResource>("/Fonts/NotoSans/NotoSans-Regular.ttf"), 8);
+
+        _renderBackbuffer = _clyde.CreateRenderTarget(
+            (128, 128),
+            new RenderTargetFormatParameters(RenderTargetColorFormat.Rgba8Srgb, true),
+            new TextureSampleParameters
+            {
+                Filter = true
+            }, nameof(ShowHandItemOverlay));
+    }
+
+    protected override void Draw(in OverlayDrawArgs args)
+    {
+        if (_hands.GetActiveHandEntity() is not EntityUid held ||
+            _player.LocalEntity is not EntityUid player) // how and why?
+            return;
+
+        var handle = args.ScreenHandle;
+
+        var mouseScreenPos = _input.MouseScreenPosition.Position;
+
+        var mouseMapPos = _eye.ScreenToMap(mouseScreenPos);
+        // Why do i have to do so much to simply convert Vector2 from screenspace to worldspace and back?
+        var finalMapPos = _hands.GetFinalDropCoordinates(player, _transform.GetMapCoordinates(player), mouseMapPos);
+        var finalScreenPos = _eye.MapToScreen(new Robust.Shared.Map.MapCoordinates(finalMapPos, mouseMapPos.MapId)).Position;
+
+        //handle.DrawString(_font, mouseScreenPos, mouseScreenPos.ToString());
+        //handle.DrawString(_font, mouseScreenPos + new System.Numerics.Vector2(0, 64), finalScreenPos.ToString());
+
+        Angle adjustedAngle = _entMan.GetComponent<HoldingDropComponent>(player).Angle;
+        handle.RenderInRenderTarget(_renderBackbuffer, () =>
+        {
+            handle.DrawEntity(held, _renderBackbuffer.Size / 2, new System.Numerics.Vector2(2), adjustedAngle);
+        }, Color.Transparent);
+        
+        handle.DrawTexture(_renderBackbuffer.Texture, finalScreenPos - _renderBackbuffer.Size/2, Color.GreenYellow.WithAlpha(0.75f));
     }
 }
