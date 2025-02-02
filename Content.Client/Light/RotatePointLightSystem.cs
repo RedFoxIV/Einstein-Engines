@@ -22,6 +22,15 @@ public sealed class RotatePointLightSystem : EntitySystem
         SubscribeLocalEvent<RotatePointLightComponent, ComponentStartup>(CompInit);
     }
 
+    /// <summary>
+    /// Coderbus' ultimatum
+    /// 
+    /// Because <see cref="SharedPointLightComponent"/> and <see cref="SharedPointLightComponent.Rotation"/> in particular are
+    /// restricted by <see cref="AccessAttribute"/> to be accessible only by <see cref="SharedPointLightSystem"/>,
+    /// the only two options for changing pointlight rotation are either
+    ///   * hijacking state update system to apply a state with the needed rotation, or
+    ///   * this shit.
+    /// </summary>
     private void CompInit(EntityUid uid, RotatePointLightComponent comp, ComponentStartup args)
     {
         var anim = new Animation()
