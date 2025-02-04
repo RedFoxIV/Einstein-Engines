@@ -64,11 +64,18 @@ public abstract partial class SharedHandsSystem : EntitySystem
         }
 
         if(args.State == BoundKeyState.Down)
-        {
-            EnsureComp<HoldingDropComponent>(uid);
-            return false;
-        }
+            return PreciseDropButtonDown(uid, hands, args);
+        return PreciseDropButtonUp(uid, hands, args);
+    }
 
+    private bool PreciseDropButtonDown(EntityUid uid, HandsComponent hands, in PointerInputCmdHandler.PointerInputCmdArgs args)
+    {
+        var comp = EnsureComp<HoldingDropComponent>(uid);
+        return false;
+    }
+
+    private bool PreciseDropButtonUp(EntityUid uid, HandsComponent hands, in PointerInputCmdHandler.PointerInputCmdArgs args)
+    {
         if (!TryComp<HoldingDropComponent>(uid, out var comp))
             return false;
         TryDrop(uid, hands.ActiveHand!, args.Coordinates, handsComp: hands, dropAngle: comp.Angle);

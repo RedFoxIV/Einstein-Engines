@@ -25,10 +25,10 @@ public sealed class RenderOrderSystem : SharedRenderOrderSystem
 
     protected override void UpdateRenderOrder(EntityUid uid, RenderOrderComponent comp)
     {
-        //base.UpdateRenderOrder(uid, comp);
+        if (!TryComp<SpriteComponent>(uid, out var sprite))
+            return;
 
         DebugTools.Assert(comp.ValueOrder.Count == comp.Values.Count, "comp.Values and comp.ValueOrder have different entry counts");
-        var sprite = Comp<SpriteComponent>(uid);
         if(comp.ValueOrder.Count == 0)
         {
             sprite.RenderOrder = DefaultRenderOrder;
