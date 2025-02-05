@@ -1189,6 +1189,8 @@ namespace Content.Shared.Interaction
             return InteractionActivate(user, used, false, false, false);
         }
 
+
+
         /// <summary>
         ///     Alternative interactions on an entity.
         /// </summary>
@@ -1198,6 +1200,11 @@ namespace Content.Shared.Interaction
         /// <returns>True if the interaction was handled, false otherwise.</returns>
         public bool AltInteract(EntityUid user, EntityUid target)
         {
+            var ev = new AlternativeInteractionEvent(user);
+            RaiseLocalEvent(target, ev);
+            if (ev.Handled)
+                return true;
+
             // Get list of alt-interact verbs
             var verbs = _verbSystem.GetLocalVerbs(target, user, typeof(AlternativeVerb));
 
@@ -1421,6 +1428,11 @@ namespace Content.Shared.Interaction
         {
             return _actionBlockerSystem.CanComplexInteract(user);
         }
+    }
+
+    public sealed class AlternativeInteractionEvent(EntityUid user) : HandledEntityEventArgs
+    {
+        public EntityUid User = user;
     }
 
     /// <summary>

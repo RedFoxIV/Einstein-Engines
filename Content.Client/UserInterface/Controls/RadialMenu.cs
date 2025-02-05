@@ -67,7 +67,7 @@ public class RadialMenu : BaseWindow
     /// and populate the radial containers with RadialMenuButtons. Setting the TargetLayer field of these
     /// buttons to the name of a radial conatiner will display the container in question to the user
     /// whenever it is clicked in additon to any other actions assigned to the button
-    /// </remarks>
+    /// </remarks>a
     public RadialMenu()
     {
         // Hide all starting children (if any) except the first (this is the active layer)
